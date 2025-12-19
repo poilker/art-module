@@ -1,0 +1,15 @@
+{
+  "classes": [
+    "Baroque",
+    "Japanese_Art",
+    "Realism",
+    "Renaissance",
+    "Romanticism"
+  ],
+  "arch": "resnet18",
+  "device": "cpu",
+  "best_val_macro_f1": 0.7327950035357467,
+  "test_loss": 0.7261422295955645,
+  "test_acc": 0.731638418079096,
+  "test_macro_f1": 0.733726804930983
+}
