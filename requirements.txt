@@ -1,3 +1,5 @@
+requests
+
 torch
 torchvision
 torchaudio
@@ -7,3 +9,4 @@ scikit-learn
 matplotlib
 pillow
 streamlit
+
