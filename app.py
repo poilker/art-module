@@ -1,15 +1,16 @@
 import streamlit as st
+import requests
+from pathlib import Path
+from PIL import Image
+
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-from PIL import Image
-from pathlib import Path
-from pathlib import Path
-import requests
-import streamlit as st
 
+# =========================
+# Google Drive download
+# =========================
 BEST_ID = "1HSyvm7HIOWIj1E5cXjuiRBTKNd4-ZSIQ"
-LAST_ID = "1dtnQgSbuqdudPfbPYDEA_H3BQX3djyFx"  # 需要才用
 
 def _get_confirm_token(resp: requests.Response):
     for k, v in resp.cookies.items():
@@ -30,46 +31,60 @@ def download_from_gdrive(file_id: str, dest: Path, chunk_size: int = 1024 * 1024
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     tmp = dest.with_suffix(dest.suffix + ".tmp")
+    total = int(resp.headers.get("Content-Length", 0))
+    downloaded = 0
+
+    prog = st.progress(0) if total > 0 else None
+
     with open(tmp, "wb") as f:
         for chunk in resp.iter_content(chunk_size=chunk_size):
-            if chunk:
-                f.write(chunk)
+            if not chunk:
+                continue
+            f.write(chunk)
+            downloaded += len(chunk)
+            if prog and total > 0:
+                prog.progress(min(downloaded / total, 1.0))
+
     tmp.replace(dest)
 
 @st.cache_resource
 def ensure_best_model() -> str:
     """確保 outputs/best.pt 存在；不存在就從 GDrive 下載。"""
     best_path = Path("outputs/best.pt")
-    if not best_path.exists():
+    if not best_path.exists() or best_path.stat().st_size == 0:
         st.info("Downloading model (best.pt) from Google Drive...")
         download_from_gdrive(BEST_ID, best_path)
         st.success("Model downloaded ✅")
     return str(best_path)
 
-# === Config ===
-CKPT_PATH = Path("outputs/best.pt")
-CM_PATH = Path("outputs/confusion_matrix.png")
-
+# =========================
+# UI Config
+# =========================
 st.set_page_config(page_title="Style Classifier", page_icon="🎨", layout="centered")
 st.title("🎨 Painting Style Classifier (5 classes)")
 
-# Show confusion matrix image if exists (no matplotlib needed)
+# paths
+CKPT_PATH = Path(ensure_best_model())          # ✅ 這行是關鍵：雲端會先下載再回傳路徑
+CM_PATH = Path("outputs/confusion_matrix.png")
+
+# Show confusion matrix image if exists
 if CM_PATH.exists():
     st.subheader("Confusion Matrix (Test)")
     st.image(str(CM_PATH), use_container_width=True)
 else:
-    st.info("找不到 outputs/confusion_matrix.png（你可以先跑 eval.py 產生它）")
+    st.info("找不到 outputs/confusion_matrix.png（你可以先跑 eval.py 產生它，或不放也沒關係）")
 
+# =========================
+# Load model
+# =========================
 @st.cache_resource
-def load_ckpt_and_model():
-    if not CKPT_PATH.exists():
-        raise FileNotFoundError(f"找不到模型檔：{CKPT_PATH.resolve()}")
+def load_ckpt_and_model(ckpt_path_str: str):
+    ckpt_path = Path(ckpt_path_str)
+    ckpt = torch.load(ckpt_path, map_location="cpu")
 
-    ckpt = torch.load(CKPT_PATH, map_location="cpu")
-
-    # 支援兩種常見格式：
-    # A) 你 train.py 存的是 {'state_dict':..., 'class_names':..., 'arch':...}
-    # B) 或者只存 model.state_dict()
+    # 支援兩種格式：
+    # A) {'state_dict':..., 'class_names':..., 'arch':...}
+    # B) 純 state_dict
     if isinstance(ckpt, dict) and "state_dict" in ckpt:
         class_names = ckpt.get("class_names", None)
         arch = ckpt.get("arch", "resnet18")
@@ -79,11 +94,9 @@ def load_ckpt_and_model():
         arch = "resnet18"
         state_dict = ckpt
 
-    # 如果沒 class_names，就用你資料夾名稱順序（跟 train.py 印出的一致）
     if class_names is None:
         class_names = ["Baroque", "Japanese_Art", "Realism", "Renaissance", "Romanticism"]
 
-    # Build model
     arch = arch.lower()
     if arch == "resnet18":
         model = models.resnet18(weights=None)
@@ -100,8 +113,10 @@ def load_ckpt_and_model():
     tf = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
     ])
+
     return model, tf, class_names
 
 def predict_topk(model, tf, class_names, img: Image.Image, k=3):
@@ -114,12 +129,15 @@ def predict_topk(model, tf, class_names, img: Image.Image, k=3):
 
 # Load model once
 try:
-    model, tf, class_names = load_ckpt_and_model()
+    model, tf, class_names = load_ckpt_and_model(str(CKPT_PATH))
     st.success(f"Model loaded ✅ classes={class_names}")
 except Exception as e:
-    st.error(str(e))
+    st.error(f"模型載入失敗：{e}")
     st.stop()
 
+# =========================
+# Inference UI
+# =========================
 st.subheader("Try your own image")
 uploaded = st.file_uploader("Upload an image (jpg/png/webp)", type=["jpg", "jpeg", "png", "webp", "bmp"])
 if uploaded:
@@ -132,4 +150,5 @@ if uploaded:
         st.write(f"- **{name}**: {p*100:.2f}%")
 else:
     st.info("請先上傳一張圖片。")
+
 
