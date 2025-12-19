@@ -4,6 +4,47 @@ import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 from pathlib import Path
+from pathlib import Path
+import requests
+import streamlit as st
+
+BEST_ID = "1HSyvm7HIOWIj1E5cXjuiRBTKNd4-ZSIQ"
+LAST_ID = "1dtnQgSbuqdudPfbPYDEA_H3BQX3djyFx"  # 需要才用
+
+def _get_confirm_token(resp: requests.Response):
+    for k, v in resp.cookies.items():
+        if k.startswith("download_warning"):
+            return v
+    return None
+
+def download_from_gdrive(file_id: str, dest: Path, chunk_size: int = 1024 * 1024):
+    url = "https://docs.google.com/uc?export=download"
+    sess = requests.Session()
+
+    resp = sess.get(url, params={"id": file_id}, stream=True)
+    token = _get_confirm_token(resp)
+    if token:
+        resp = sess.get(url, params={"id": file_id, "confirm": token}, stream=True)
+
+    resp.raise_for_status()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    with open(tmp, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=chunk_size):
+            if chunk:
+                f.write(chunk)
+    tmp.replace(dest)
+
+@st.cache_resource
+def ensure_best_model() -> str:
+    """確保 outputs/best.pt 存在；不存在就從 GDrive 下載。"""
+    best_path = Path("outputs/best.pt")
+    if not best_path.exists():
+        st.info("Downloading model (best.pt) from Google Drive...")
+        download_from_gdrive(BEST_ID, best_path)
+        st.success("Model downloaded ✅")
+    return str(best_path)
 
 # === Config ===
 CKPT_PATH = Path("outputs/best.pt")
@@ -91,3 +132,4 @@ if uploaded:
         st.write(f"- **{name}**: {p*100:.2f}%")
 else:
     st.info("請先上傳一張圖片。")
+
