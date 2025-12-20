@@ -7,10 +7,11 @@ from pathlib import Path
 import requests
 
 # ===== Model from GitHub Release =====
-MODEL_URL = "https://github.com/poilker/art-module/releases/download/v2.0/best.pt"
+MODEL_VERSION = "v2.0"  # ✅ 每次你換模型，就改這裡（例如 v2.1, v3.0）
+MODEL_URL = f"https://github.com/poilker/art-module/releases/download/{MODEL_VERSION}/best.pt"
+
 CKPT_PATH = Path("outputs_v2/best.pt")
 CM_PATH   = Path("outputs_v2/confusion_matrix.png")
-
 
 
 def download_file(url: str, dest: Path, chunk_size: int = 1024 * 1024):
@@ -28,43 +29,48 @@ def download_file(url: str, dest: Path, chunk_size: int = 1024 * 1024):
 
 
 @st.cache_resource
-def ensure_best_model() -> Path:
-    """確保 outputs/best.pt 存在；不存在就從 GitHub Release 下載。"""
-    if not CKPT_PATH.exists():
-        st.info("Downloading model (best.pt) from GitHub Release...")
+def ensure_best_model(version: str) -> Path:
+    """
+    ✅ 確保 best.pt 是「指定版本」：
+    - 如果本機沒有 best.pt -> 下載
+    - 如果版本不同 -> 重新下載覆蓋
+    """
+    version_file = CKPT_PATH.with_suffix(".version")
+
+    need_download = True
+    if CKPT_PATH.exists() and version_file.exists():
+        current = version_file.read_text(encoding="utf-8").strip()
+        if current == version:
+            need_download = False
+
+    if need_download:
+        st.info(f"Downloading model (best.pt) from GitHub Release... [{version}]")
         download_file(MODEL_URL, CKPT_PATH)
+        version_file.write_text(version, encoding="utf-8")
         st.success("Model downloaded ✅")
+
     return CKPT_PATH
 
 
-# ===== Streamlit UI =====
-st.set_page_config(page_title="Style Classifier", page_icon="🎨", layout="centered")
-st.title("🎨 Painting Style Classifier (5 classes)")
-
-if CM_PATH.exists():
-    st.subheader("Confusion Matrix (Test)")
-    st.image(str(CM_PATH), use_container_width=True)
-else:
-    st.info("找不到 outputs/confusion_matrix.png（你可以先跑 eval.py 產生它）")
-
-
 @st.cache_resource
-def load_ckpt_and_model():
-    ckpt_path = ensure_best_model()
+def load_ckpt_and_model(version: str):
+    ckpt_path = ensure_best_model(version)
 
-    # PyTorch 2.6+：預設 weights_only=True 會造成你之前的錯誤
     ckpt = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
 
     if isinstance(ckpt, dict) and "state_dict" in ckpt:
         class_names = ckpt.get("class_names", None)
         arch = ckpt.get("arch", "resnet18")
         state_dict = ckpt["state_dict"]
+        img_size = int(ckpt.get("img_size", 224))
     else:
         class_names = None
         arch = "resnet18"
         state_dict = ckpt
+        img_size = 224
 
-    if class_names is None:
+    # ✅ fallback（理論上你的 ckpt 會有 class_names，就不會走到這裡）
+    if not class_names:
         class_names = ["Anime", "Baroque", "Japanese_Art", "Neoclassicism", "Realism"]
 
     arch = arch.lower()
@@ -81,11 +87,11 @@ def load_ckpt_and_model():
     model.eval()
 
     tf = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
-    return model, tf, class_names
+    return model, tf, list(class_names)
 
 
 def predict_topk(model, tf, class_names, img: Image.Image, k=3):
@@ -97,9 +103,21 @@ def predict_topk(model, tf, class_names, img: Image.Image, k=3):
     return [(class_names[i], float(p)) for i, p in zip(top.indices.tolist(), top.values.tolist())]
 
 
+# ===== Streamlit UI =====
+st.set_page_config(page_title="Style Classifier", page_icon="🎨", layout="centered")
+st.title("🎨 Painting Style Classifier (5 classes)")
+st.caption(f"Model version: {MODEL_VERSION}")
+
+if CM_PATH.exists():
+    st.subheader("Confusion Matrix (Test)")
+    st.image(str(CM_PATH), use_container_width=True)
+else:
+    st.info("找不到 outputs_v2/confusion_matrix.png（你可以先跑 eval.py 產生它）")
+
+
 # ===== Run =====
 try:
-    model, tf, class_names = load_ckpt_and_model()
+    model, tf, class_names = load_ckpt_and_model(MODEL_VERSION)  # ✅ cache key 有版本
     st.success(f"Model loaded ✅ classes={class_names}")
 except Exception as e:
     st.error(f"模型載入失敗：{e}")
@@ -117,5 +135,3 @@ if uploaded:
         st.write(f"- **{name}**: {p*100:.2f}%")
 else:
     st.info("請先上傳一張圖片。")
-
-
