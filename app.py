@@ -7,7 +7,7 @@ from pathlib import Path
 import requests
 
 # ===== Model from GitHub Release =====
-MODEL_URL = "https://github.com/poilker/art-module/releases/download/v1.0/best.pt"
+MODEL_URL = "https://github.com/poilker/art-module/releases/download/v2.0/best.pt"
 CKPT_PATH = Path("outputs_v2/best.pt")
 CM_PATH   = Path("outputs_v2/confusion_matrix.png")
 
@@ -117,3 +117,4 @@ if uploaded:
         st.write(f"- **{name}**: {p*100:.2f}%")
 else:
     st.info("請先上傳一張圖片。")
+
