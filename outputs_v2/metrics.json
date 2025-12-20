@@ -1,0 +1,15 @@
+{
+  "classes": [
+    "Anime",
+    "Baroque",
+    "Japanese_Art",
+    "Neoclassicism",
+    "Realism"
+  ],
+  "arch": "resnet18",
+  "device": "cpu",
+  "best_val_macro_f1": 0.8534736664147042,
+  "test_loss": 0.5713931329548358,
+  "test_acc": 0.844,
+  "test_macro_f1": 0.8453374672124611
+}
