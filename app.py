@@ -8,8 +8,9 @@ import requests
 
 # ===== Model from GitHub Release =====
 MODEL_URL = "https://github.com/poilker/art-module/releases/download/v1.0/best.pt"
-CKPT_PATH = Path("outputs/best.pt")
-CM_PATH = Path("outputs/confusion_matrix.png")
+CKPT_PATH = Path("outputs_v2/best.pt")
+CM_PATH   = Path("outputs_v2/confusion_matrix.png")
+
 
 
 def download_file(url: str, dest: Path, chunk_size: int = 1024 * 1024):
