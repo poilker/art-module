@@ -65,7 +65,7 @@ def load_ckpt_and_model():
         state_dict = ckpt
 
     if class_names is None:
-        class_names = ["Baroque", "Japanese_Art", "Realism", "Renaissance", "Romanticism"]
+        class_names = ["Anime", "Baroque", "Japanese_Art", "Neoclassicism", "Realism"]
 
     arch = arch.lower()
     if arch == "resnet18":
@@ -117,4 +117,5 @@ if uploaded:
         st.write(f"- **{name}**: {p*100:.2f}%")
 else:
     st.info("請先上傳一張圖片。")
+
 
